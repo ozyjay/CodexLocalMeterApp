@@ -102,19 +102,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppLog.write("updateStatusItem skipped; button/model missing")
             return
         }
-        button.image = StatusBarIcon.image
+        let level = StatusFormatter.statusLevel(summary: model.summary, settings: model.settings)
+        button.image = StatusBarIcon.image(for: level)
         button.imagePosition = .imageLeading
-        button.title = " \(model.menuBarValueText)"
+        button.attributedTitle = NSAttributedString(
+            string: " \(model.menuBarValueText)",
+            attributes: [
+                .foregroundColor: StatusBarColors.textColor(for: level)
+            ]
+        )
         button.toolTip = "Codex Local Meter - \(model.menuBarValueText)"
         button.setAccessibilityLabel("Codex Local Meter")
         statusItem?.length = max(96, button.attributedTitle.size().width + 18)
         statusItem?.isVisible = true
-        AppLog.write("status item updated title=\(model.menuBarValueText) hasImage=\(button.image != nil) length=\(statusItem?.length ?? -1)")
+        AppLog.write("status item updated title=\(model.menuBarValueText) level=\(level) hasImage=\(button.image != nil) length=\(statusItem?.length ?? -1)")
     }
 }
 
 enum StatusBarIcon {
-    static let image: NSImage? = {
+    static func image(for level: StatusLevel) -> NSImage? {
+        guard let image = baseImage?.copy() as? NSImage else {
+            return nil
+        }
+        switch level {
+        case .normal:
+            image.isTemplate = true
+            return image
+        case .warning:
+            return tintedImage(image, color: StatusBarColors.warning)
+        case .danger:
+            return tintedImage(image, color: StatusBarColors.danger)
+        }
+    }
+
+    private static let baseImage: NSImage? = {
         let bundles: [Bundle] = [Bundle.main, Bundle.module]
         for bundle in bundles {
             if let url = bundle.url(forResource: "status-icon", withExtension: "svg"),
@@ -126,6 +147,34 @@ enum StatusBarIcon {
         }
         return nil
     }()
+
+    private static func tintedImage(_ image: NSImage, color: NSColor) -> NSImage {
+        let tinted = NSImage(size: image.size)
+        tinted.lockFocus()
+        let rect = NSRect(origin: .zero, size: image.size)
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
+        color.set()
+        rect.fill(using: .sourceAtop)
+        tinted.unlockFocus()
+        tinted.isTemplate = false
+        return tinted
+    }
+}
+
+enum StatusBarColors {
+    static let warning = NSColor.systemOrange
+    static let danger = NSColor.systemRed
+
+    static func textColor(for level: StatusLevel) -> NSColor {
+        switch level {
+        case .normal:
+            return .labelColor
+        case .warning:
+            return warning
+        case .danger:
+            return danger
+        }
+    }
 }
 
 @MainActor

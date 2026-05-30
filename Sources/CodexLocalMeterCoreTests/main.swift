@@ -114,6 +114,34 @@ enum CoreTestRunner {
             expect(StatusFormatter.statusText(summary: empty, settings: .defaults) == "--", "expected empty status text")
         }
 
+        await test("status formatter chooses normal warning and danger levels from primary percent", failures: &failures) {
+            let settings = MeterSettings(
+                codexPath: "/tmp/codex",
+                refreshIntervalSeconds: 300,
+                showFiveHourUsage: true,
+                showWeeklyUsage: true,
+                warningThresholdPercent: 70,
+                dangerThresholdPercent: 90,
+                compactMode: false
+            )
+
+            var normal = UsageSummary(isEstimated: false, codexPath: "/tmp/codex", sessionCount: 1, modelNames: [], parseErrors: [])
+            normal.primaryUsedPercent = 69.9
+            expect(StatusFormatter.statusLevel(summary: normal, settings: settings) == .normal, "expected normal below warning threshold")
+
+            var warning = normal
+            warning.primaryUsedPercent = 70
+            expect(StatusFormatter.statusLevel(summary: warning, settings: settings) == .warning, "expected warning at warning threshold")
+
+            var danger = normal
+            danger.primaryUsedPercent = 90
+            expect(StatusFormatter.statusLevel(summary: danger, settings: settings) == .danger, "expected danger at danger threshold")
+
+            var noPercent = normal
+            noPercent.primaryUsedPercent = nil
+            expect(StatusFormatter.statusLevel(summary: noPercent, settings: settings) == .normal, "expected normal when no percent is available")
+        }
+
         await test("diagnostics exclude prompt and response content", failures: &failures) {
             var summary = UsageSummary(isEstimated: true, codexPath: "/tmp/codex", sessionCount: 1, modelNames: ["gpt-5"], parseErrors: [])
             summary.fiveHourMessages = 1
