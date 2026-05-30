@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:CodexLocalMeterApp}",
+            "name": "Debug CodexLocalMeterApp",
+            "target": "CodexLocalMeterApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug CodexLocalMeterApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:CodexLocalMeterApp}",
+            "name": "Release CodexLocalMeterApp",
+            "target": "CodexLocalMeterApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release CodexLocalMeterApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:CodexLocalMeterApp}",
+            "name": "Debug CodexLocalMeterCoreTests",
+            "target": "CodexLocalMeterCoreTests",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug CodexLocalMeterCoreTests"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:CodexLocalMeterApp}",
+            "name": "Release CodexLocalMeterCoreTests",
+            "target": "CodexLocalMeterCoreTests",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release CodexLocalMeterCoreTests"
+        }
+    ]
+}
