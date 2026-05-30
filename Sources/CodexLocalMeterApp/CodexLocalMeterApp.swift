@@ -113,7 +113,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         button.toolTip = "Codex Local Meter - \(model.menuBarValueText)"
         button.setAccessibilityLabel("Codex Local Meter")
-        statusItem?.length = max(96, button.attributedTitle.size().width + 18)
+        statusItem?.length = NSStatusItem.variableLength
         statusItem?.isVisible = true
         AppLog.write("status item updated title=\(model.menuBarValueText) level=\(level) hasImage=\(button.image != nil) length=\(statusItem?.length ?? -1)")
     }
