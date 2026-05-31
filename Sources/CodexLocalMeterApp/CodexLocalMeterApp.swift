@@ -338,18 +338,22 @@ final class DirectoryWatcher {
 
 struct MeterPopoverView: View {
     @ObservedObject var model: MeterViewModel
+    @State private var detailsExpanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            header
-            usageSection
-            activitySection
-            sourceSection
-            issuesSection
-            actions
-            settingsSection
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                header
+                heroSection
+                if model.settings.showWeeklyUsage {
+                    weeklySection
+                }
+                statusLine
+                actions
+                detailsSection
+            }
+            .padding(18)
         }
-        .padding(18)
         .sheet(isPresented: $model.showingDiagnostics) {
             DiagnosticsView(model: model)
         }
@@ -359,33 +363,170 @@ struct MeterPopoverView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Codex Local Meter")
                 .font(.headline)
-            Text("Local estimates from Codex session files")
+            Text("Local estimates only. No session content leaves your Mac.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
-    private var usageSection: some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-            row("5-hour window", StatusFormatter.fiveHourDetail(summary: model.summary))
-            if model.settings.showWeeklyUsage {
-                row("7-day window", StatusFormatter.sevenDayDetail(summary: model.summary))
+    private var heroSection: some View {
+        HStack(alignment: .center, spacing: 20) {
+            fiveHourGauge
+                .frame(width: 134, height: 134)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("5-hour window")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(StatusFormatter.fiveHourDetail(summary: model.summary))
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .textSelection(.enabled)
+                Text(heroSupportText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    @ViewBuilder
+    private var fiveHourGauge: some View {
+        if let percent = model.summary.primaryUsedPercent {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 14)
+                Circle()
+                    .trim(from: 0, to: clamped(percent) / 100)
+                    .stroke(statusColor, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                VStack(spacing: 3) {
+                    Text("5-hour")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("\(UsageFormatting.percent(percent))%")
+                        .font(.title.weight(.bold))
+                        .monospacedDigit()
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("5-hour rate limit")
+            .accessibilityValue("\(UsageFormatting.percent(percent)) percent used")
+        } else {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 14)
+                VStack(spacing: 3) {
+                    Text(model.summary.isEstimated ? "Est." : "Local")
+                        .font(.headline)
+                    Text(estimatedGaugeValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                .padding(18)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("5-hour usage estimate")
+            .accessibilityValue(estimatedGaugeValue)
+        }
+    }
+
+    private var weeklySection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label("7-day window", systemImage: "calendar")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(StatusFormatter.sevenDayDetail(summary: model.summary))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            ProgressView(value: weeklyProgress)
+                .tint(.blue)
+        }
+    }
+
+    private var statusLine: some View {
+        HStack(spacing: 8) {
+            Label(statusText, systemImage: statusSymbol)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(statusColor)
+            Spacer()
+            Label(UsageFormatting.relativeTime(model.summary.lastActivity), systemImage: "clock")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 2)
+    }
+
+    private var actions: some View {
+        HStack(spacing: 8) {
+            Button {
+                Task { await model.refresh() }
+            } label: {
+                Label(model.isRefreshing ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
+            }
+            .disabled(model.isRefreshing)
+
+            Button {
+                model.chooseCodexFolder()
+            } label: {
+                Label("Folder", systemImage: "folder")
+            }
+
+            Button {
+                model.showDiagnostics()
+            } label: {
+                Label("Diagnostics", systemImage: "stethoscope")
+            }
+
+            Spacer(minLength: 0)
+
+            Button(role: .destructive) {
+                NSApplication.shared.terminate(nil)
+            } label: {
+                Label("Quit", systemImage: "power")
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private var detailsSection: some View {
+        DisclosureGroup("Details", isExpanded: $detailsExpanded) {
+            VStack(alignment: .leading, spacing: 14) {
+                detailMetrics
+                sourceDetails
+                issuesSection
+                settingsSection
+            }
+            .padding(.top, 8)
+        }
+        .font(.subheadline)
+    }
+
+    private var detailMetrics: some View {
+        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+            detailRow("Sessions (7 d)", "\(model.summary.sessionCount)")
+            detailRow("Models", model.summary.modelNames.isEmpty ? "-" : model.summary.modelNames.joined(separator: ", "))
+            if !model.settings.showWeeklyUsage {
+                detailRow("7-day window", StatusFormatter.sevenDayDetail(summary: model.summary))
             }
         }
     }
 
-    private var activitySection: some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-            row("Last activity", UsageFormatting.relativeTime(model.summary.lastActivity))
-            row("Sessions (7 d)", "\(model.summary.sessionCount)")
-            row("Models", model.summary.modelNames.isEmpty ? "-" : model.summary.modelNames.joined(separator: ", "))
-        }
-    }
-
-    private var sourceSection: some View {
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 8) {
-            row("Codex path", model.summary.codexPath)
-            row("Token counts", model.summary.isEstimated ? "Not found - using message counts" : "Found")
+    private var sourceDetails: some View {
+        Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
+            detailRow("Codex path", model.summary.codexPath)
+            detailRow("Token counts", model.summary.isEstimated ? "Not found - using message counts" : "Found")
         }
     }
 
@@ -408,55 +549,97 @@ struct MeterPopoverView: View {
         }
     }
 
-    private var actions: some View {
-        HStack {
-            Button("Refresh") {
-                Task { await model.refresh() }
-            }
-            .disabled(model.isRefreshing)
-
-            Button("Choose Folder") {
-                model.chooseCodexFolder()
-            }
-
-            Button("Diagnostics") {
-                model.showDiagnostics()
-            }
-
-            Spacer()
-
-            Button("Quit") {
-                NSApplication.shared.terminate(nil)
-            }
-        }
-    }
-
     private var settingsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            HStack {
-                Text("Refresh")
+            HStack(spacing: 8) {
+                Label("Refresh", systemImage: "arrow.triangle.2.circlepath")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 TextField("Seconds", text: $model.refreshIntervalText)
                     .frame(width: 72)
-                Text("seconds")
+                Text("sec")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Compact", isOn: $model.compactMode)
+                Spacer(minLength: 0)
                 Button("Apply") {
                     model.applySettings()
                 }
             }
+            Toggle("Compact menu bar", isOn: $model.compactMode)
+                .font(.caption)
         }
     }
 
-    private func row(_ label: String, _ value: String) -> some View {
+    private var statusLevel: StatusLevel {
+        StatusFormatter.statusLevel(summary: model.summary, settings: model.settings)
+    }
+
+    private var statusText: String {
+        switch statusLevel {
+        case .normal:
+            return "Normal"
+        case .warning:
+            return "Warning"
+        case .danger:
+            return "Limit high"
+        }
+    }
+
+    private var statusSymbol: String {
+        switch statusLevel {
+        case .normal:
+            return "checkmark.circle.fill"
+        case .warning:
+            return "exclamationmark.triangle.fill"
+        case .danger:
+            return "exclamationmark.octagon.fill"
+        }
+    }
+
+    private var statusColor: Color {
+        switch statusLevel {
+        case .normal:
+            return .green
+        case .warning:
+            return .orange
+        case .danger:
+            return .red
+        }
+    }
+
+    private var heroSupportText: String {
+        if model.summary.primaryUsedPercent != nil {
+            return "Based on the latest local Codex rate-limit event."
+        }
+        if model.summary.sessionCount == 0 && model.summary.parseErrors.isEmpty {
+            return "No recent local session activity found."
+        }
+        return model.summary.isEstimated ? "Using local message counts until rate-limit data appears." : "Using local token counts."
+    }
+
+    private var estimatedGaugeValue: String {
+        if model.summary.isEstimated {
+            return "~\(model.summary.fiveHourMessages ?? 0) msgs"
+        }
+        return UsageFormatting.tokens(model.summary.fiveHourTokens) ?? "0 tokens"
+    }
+
+    private var weeklyProgress: Double {
+        clamped(model.summary.secondaryUsedPercent ?? 0) / 100
+    }
+
+    private func clamped(_ percent: Double) -> Double {
+        min(max(percent, 0), 100)
+    }
+
+    private func detailRow(_ label: String, _ value: String) -> some View {
         GridRow {
             Text(label)
                 .foregroundStyle(.secondary)
                 .font(.caption)
             Text(value)
+                .font(.caption)
                 .lineLimit(2)
                 .textSelection(.enabled)
         }
