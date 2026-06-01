@@ -49,7 +49,8 @@ public struct UsageCalculator: Sendable {
                 hasTokens = true
             }
 
-            if event.primaryUsedPercent != nil || event.secondaryUsedPercent != nil {
+            if event.timestamp >= fiveHourCutoff,
+               event.primaryUsedPercent != nil || event.secondaryUsedPercent != nil {
                 if latestRateLimitTimestamp == nil || event.timestamp > latestRateLimitTimestamp! {
                     latestRateLimitTimestamp = event.timestamp
                     if let primary = event.primaryUsedPercent {

@@ -91,6 +91,20 @@ enum CoreTestRunner {
             expect(summary.parseErrors == ["issue"], "expected parse errors to be preserved")
         }
 
+        await test("usage calculator ignores stale five-hour rate limit values", failures: &failures) {
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            let events = [
+                RawEvent(sessionId: "old", timestamp: now.addingTimeInterval((-5 * 60 * 60) - 1), inputTokens: 20, outputTokens: 10, primaryUsedPercent: 82),
+                RawEvent(sessionId: "recent", timestamp: now.addingTimeInterval(-60), inputTokens: 1, outputTokens: 2)
+            ]
+
+            let summary = UsageCalculator(now: { now }).calculate(events: events, codexPath: "/tmp/codex", parseErrors: [])
+
+            expect(summary.primaryUsedPercent == nil, "expected stale five-hour rate limit to be ignored")
+            expect(summary.fiveHourTokens == 3, "expected fresh local tokens to remain available")
+            expect(summary.sevenDayTokens == 33, "expected stale rate-limit event tokens to remain in seven-day total")
+        }
+
         await test("status formatter shows rate limits tokens messages and empty state", failures: &failures) {
             let rateLimit = UsageSummary(
                 isEstimated: false,
