@@ -59,6 +59,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             .store(in: &cancellables)
+
+        Task { @MainActor in
+            await model.start()
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -194,6 +198,9 @@ final class MeterViewModel: ObservableObject {
     @Published var compactMode: Bool
 
     private let settingsStore: SettingsStore
+    private lazy var refreshScheduler = RefreshScheduler<Void> { [weak self] in
+        await self?.performRefresh()
+    }
     private var timer: Timer?
     private var watcher: DirectoryWatcher?
     private var started = false
@@ -211,9 +218,6 @@ final class MeterViewModel: ObservableObject {
             modelNames: [],
             parseErrors: []
         )
-        Task { @MainActor in
-            await start()
-        }
     }
 
     var menuBarValueText: String {
@@ -233,6 +237,10 @@ final class MeterViewModel: ObservableObject {
     }
 
     func refresh() async {
+        await refreshScheduler.requestRefresh()
+    }
+
+    private func performRefresh() async {
         AppLog.write("refresh start path=\(settings.codexPath)")
         isRefreshing = true
         let currentSettings = settings

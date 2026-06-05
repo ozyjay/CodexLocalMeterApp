@@ -172,6 +172,188 @@ enum CoreTestRunner {
             expect(!text.contains("private answer"), "must not include response content")
         }
 
+        await test("refresh scheduler coalesces overlapping requests into one follow-up", failures: &failures) {
+            actor RefreshProbe {
+                private var calls = 0
+                private var firstRefreshStarted = false
+                private var firstRefreshStartedWaiter: CheckedContinuation<Void, Never>?
+                private var firstRefreshReleased = false
+                private var releaseFirstRefresh: CheckedContinuation<Void, Never>?
+
+                func nextCallNumber() -> Int {
+                    calls += 1
+                    return calls
+                }
+
+                func markFirstRefreshStarted() {
+                    firstRefreshStarted = true
+                    firstRefreshStartedWaiter?.resume()
+                    firstRefreshStartedWaiter = nil
+                }
+
+                func waitForFirstRefreshStarted() async {
+                    if firstRefreshStarted {
+                        return
+                    }
+                    await withCheckedContinuation { continuation in
+                        firstRefreshStartedWaiter = continuation
+                    }
+                }
+
+                func waitUntilReleased() async {
+                    if firstRefreshReleased {
+                        return
+                    }
+                    await withCheckedContinuation { continuation in
+                        releaseFirstRefresh = continuation
+                    }
+                }
+
+                func releaseFirst() {
+                    firstRefreshReleased = true
+                    releaseFirstRefresh?.resume()
+                    releaseFirstRefresh = nil
+                }
+
+                func callCount() -> Int {
+                    calls
+                }
+            }
+
+            let probe = RefreshProbe()
+            let scheduler = RefreshScheduler<Int> {
+                let callNumber = await probe.nextCallNumber()
+                if callNumber == 1 {
+                    await probe.markFirstRefreshStarted()
+                    await probe.waitUntilReleased()
+                }
+                return callNumber
+            }
+
+            async let first = scheduler.requestRefresh()
+            await probe.waitForFirstRefreshStarted()
+            async let second = scheduler.requestRefresh()
+            async let third = scheduler.requestRefresh()
+
+            let callsBeforeRelease = await probe.callCount()
+            expect(callsBeforeRelease == 1, "expected overlapping requests not to start parallel refreshes")
+            await probe.releaseFirst()
+
+            let results = await [first, second, third]
+            expect(results == [1, 2, 2], "expected queued requests to share one follow-up refresh")
+            let finalCalls = await probe.callCount()
+            expect(finalCalls == 2, "expected one follow-up refresh after overlapping requests")
+        }
+
+        await test("refresh scheduler joins a running follow-up refresh", failures: &failures) {
+            actor RefreshProbe {
+                private var calls = 0
+                private var firstRefreshStarted = false
+                private var secondRefreshStarted = false
+                private var firstRefreshStartedWaiter: CheckedContinuation<Void, Never>?
+                private var secondRefreshStartedWaiter: CheckedContinuation<Void, Never>?
+                private var firstRefreshReleased = false
+                private var secondRefreshReleased = false
+                private var releaseFirstRefresh: CheckedContinuation<Void, Never>?
+                private var releaseSecondRefresh: CheckedContinuation<Void, Never>?
+
+                func nextCallNumber() -> Int {
+                    calls += 1
+                    return calls
+                }
+
+                func markStarted(_ callNumber: Int) {
+                    if callNumber == 1 {
+                        firstRefreshStarted = true
+                        firstRefreshStartedWaiter?.resume()
+                        firstRefreshStartedWaiter = nil
+                    } else if callNumber == 2 {
+                        secondRefreshStarted = true
+                        secondRefreshStartedWaiter?.resume()
+                        secondRefreshStartedWaiter = nil
+                    }
+                }
+
+                func waitForStarted(_ callNumber: Int) async {
+                    if callNumber == 1 {
+                        if firstRefreshStarted {
+                            return
+                        }
+                        await withCheckedContinuation { continuation in
+                            firstRefreshStartedWaiter = continuation
+                        }
+                    } else if callNumber == 2 {
+                        if secondRefreshStarted {
+                            return
+                        }
+                        await withCheckedContinuation { continuation in
+                            secondRefreshStartedWaiter = continuation
+                        }
+                    }
+                }
+
+                func waitUntilReleased(_ callNumber: Int) async {
+                    if callNumber == 1 {
+                        if firstRefreshReleased {
+                            return
+                        }
+                        await withCheckedContinuation { continuation in
+                            releaseFirstRefresh = continuation
+                        }
+                    } else if callNumber == 2 {
+                        if secondRefreshReleased {
+                            return
+                        }
+                        await withCheckedContinuation { continuation in
+                            releaseSecondRefresh = continuation
+                        }
+                    }
+                }
+
+                func release(_ callNumber: Int) {
+                    if callNumber == 1 {
+                        firstRefreshReleased = true
+                        releaseFirstRefresh?.resume()
+                        releaseFirstRefresh = nil
+                    } else if callNumber == 2 {
+                        secondRefreshReleased = true
+                        releaseSecondRefresh?.resume()
+                        releaseSecondRefresh = nil
+                    }
+                }
+
+                func callCount() -> Int {
+                    calls
+                }
+            }
+
+            let probe = RefreshProbe()
+            let scheduler = RefreshScheduler<Int> {
+                let callNumber = await probe.nextCallNumber()
+                await probe.markStarted(callNumber)
+                if callNumber == 1 || callNumber == 2 {
+                    await probe.waitUntilReleased(callNumber)
+                }
+                return callNumber
+            }
+
+            async let first = scheduler.requestRefresh()
+            await probe.waitForStarted(1)
+            async let second = scheduler.requestRefresh()
+            await probe.release(1)
+            await probe.waitForStarted(2)
+            async let third = scheduler.requestRefresh()
+
+            let callsBeforeSecondRelease = await probe.callCount()
+            expect(callsBeforeSecondRelease == 2, "expected request during follow-up not to start a third refresh")
+            await probe.release(2)
+
+            let results = await [first, second, third]
+            expect(results == [1, 2, 2], "expected request during follow-up to share follow-up result")
+            let finalCalls = await probe.callCount()
+            expect(finalCalls == 2, "expected no extra refresh after joining follow-up")
+        }
+
         if failures.isEmpty {
             print("CodexLocalMeterCoreTests: all tests passed")
         } else {
