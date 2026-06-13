@@ -138,4 +138,28 @@ public enum UsageFormatting {
         }
         return "\(diffHours / 24) d ago"
     }
+
+    public static func windowRemaining(lastActivity: Date?, duration: TimeInterval, now: Date = Date()) -> String {
+        guard let lastActivity else {
+            return "No active window"
+        }
+
+        let remainingSeconds = lastActivity.addingTimeInterval(duration).timeIntervalSince(now)
+        guard remainingSeconds > 0 else {
+            return "No active window"
+        }
+
+        let remainingMinutes = max(1, Int((remainingSeconds / 60).rounded(.up)))
+        let days = remainingMinutes / (24 * 60)
+        let hours = (remainingMinutes % (24 * 60)) / 60
+        let minutes = remainingMinutes % 60
+
+        if days > 0 {
+            return "Clears in \(days)d \(hours)h"
+        }
+        if hours > 0 {
+            return "Clears in \(hours)h \(minutes)m"
+        }
+        return "Clears in \(minutes)m"
+    }
 }

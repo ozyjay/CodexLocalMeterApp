@@ -391,6 +391,9 @@ struct MeterPopoverView: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .textSelection(.enabled)
+                TimelineView(.periodic(from: Date(), by: 60)) { context in
+                    windowRemainingLabel(duration: 5 * 60 * 60, now: context.date)
+                }
                 Text(heroSupportText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -456,6 +459,9 @@ struct MeterPopoverView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+            }
+            TimelineView(.periodic(from: Date(), by: 60)) { context in
+                windowRemainingLabel(duration: 7 * 24 * 60 * 60, now: context.date)
             }
             ProgressView(value: weeklyProgress)
                 .tint(.blue)
@@ -639,6 +645,20 @@ struct MeterPopoverView: View {
 
     private func clamped(_ percent: Double) -> Double {
         min(max(percent, 0), 100)
+    }
+
+    private func windowRemainingLabel(duration: TimeInterval, now: Date) -> some View {
+        Label(
+            UsageFormatting.windowRemaining(
+                lastActivity: model.summary.lastActivity,
+                duration: duration,
+                now: now
+            ),
+            systemImage: "timer"
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

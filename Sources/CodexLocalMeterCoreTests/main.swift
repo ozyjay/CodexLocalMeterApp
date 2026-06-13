@@ -128,6 +128,29 @@ enum CoreTestRunner {
             expect(StatusFormatter.statusText(summary: empty, settings: .defaults) == "--", "expected empty status text")
         }
 
+        await test("usage formatter describes remaining rolling-window time", failures: &failures) {
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            let recentActivity = now.addingTimeInterval(-(1 * 60 * 60) - (12 * 60))
+            let staleActivity = now.addingTimeInterval((-5 * 60 * 60) - 1)
+
+            expect(
+                UsageFormatting.windowRemaining(lastActivity: recentActivity, duration: 5 * 60 * 60, now: now) == "Clears in 3h 48m",
+                "expected hours and minutes remaining"
+            )
+            expect(
+                UsageFormatting.windowRemaining(lastActivity: recentActivity, duration: 7 * 24 * 60 * 60, now: now) == "Clears in 6d 22h",
+                "expected days and hours remaining"
+            )
+            expect(
+                UsageFormatting.windowRemaining(lastActivity: staleActivity, duration: 5 * 60 * 60, now: now) == "No active window",
+                "expected stale window to be inactive"
+            )
+            expect(
+                UsageFormatting.windowRemaining(lastActivity: nil, duration: 5 * 60 * 60, now: now) == "No active window",
+                "expected missing activity to be inactive"
+            )
+        }
+
         await test("status formatter chooses normal warning and danger levels from primary percent", failures: &failures) {
             let settings = MeterSettings(
                 codexPath: "/tmp/codex",
