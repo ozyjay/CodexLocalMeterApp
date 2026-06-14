@@ -107,12 +107,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         let level = StatusFormatter.statusLevel(summary: model.summary, settings: model.settings)
-        button.image = StatusBarIcon.image(for: level)
+        let activeWindow = StatusFormatter.activeRateLimitWindow(summary: model.summary, settings: model.settings)
+        button.image = StatusBarIcon.image(for: level, window: activeWindow)
         button.imagePosition = .imageLeading
         button.attributedTitle = NSAttributedString(
             string: " \(model.menuBarValueText)",
             attributes: [
-                .foregroundColor: StatusBarColors.textColor(for: level)
+                .foregroundColor: StatusBarColors.textColor(for: level, window: activeWindow)
             ]
         )
         button.toolTip = "Codex Local Meter - \(model.menuBarValueText)"
@@ -124,7 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 enum StatusBarIcon {
-    static func image(for level: StatusLevel) -> NSImage? {
+    static func image(for level: StatusLevel, window: RateLimitWindow?) -> NSImage? {
         guard let image = baseImage?.copy() as? NSImage else {
             return nil
         }
@@ -133,9 +134,9 @@ enum StatusBarIcon {
             image.isTemplate = true
             return image
         case .warning:
-            return tintedImage(image, color: StatusBarColors.warning)
+            return tintedImage(image, color: StatusBarColors.warning(for: window))
         case .danger:
-            return tintedImage(image, color: StatusBarColors.danger)
+            return tintedImage(image, color: StatusBarColors.danger(for: window))
         }
     }
 
@@ -166,17 +167,22 @@ enum StatusBarIcon {
 }
 
 enum StatusBarColors {
-    static let warning = NSColor.systemOrange
-    static let danger = NSColor.systemRed
+    static func warning(for window: RateLimitWindow?) -> NSColor {
+        window == .secondary ? NSColor.systemBlue : NSColor.systemOrange
+    }
 
-    static func textColor(for level: StatusLevel) -> NSColor {
+    static func danger(for window: RateLimitWindow?) -> NSColor {
+        window == .secondary ? NSColor.systemPurple : NSColor.systemRed
+    }
+
+    static func textColor(for level: StatusLevel, window: RateLimitWindow?) -> NSColor {
         switch level {
         case .normal:
             return .labelColor
         case .warning:
-            return warning
+            return warning(for: window)
         case .danger:
-            return danger
+            return danger(for: window)
         }
     }
 }
@@ -378,93 +384,37 @@ struct MeterPopoverView: View {
     }
 
     private var heroSection: some View {
-        HStack(alignment: .center, spacing: 20) {
-            fiveHourGauge
-                .frame(width: 134, height: 134)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("5-hour window")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(StatusFormatter.fiveHourDetail(summary: model.summary))
-                    .font(.title2.weight(.semibold))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.8)
-                    .textSelection(.enabled)
-                TimelineView(.periodic(from: Date(), by: 60)) { context in
-                    primaryWindowRemainingLabel(now: context.date)
-                }
-                Text(heroSupportText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
+        TimelineView(.periodic(from: Date(), by: 60)) { context in
+            CircularSplitFaceMeter(
+                title: "5-hour window",
+                percent: model.summary.primaryUsedPercent,
+                percentDetail: StatusFormatter.fiveHourDetail(summary: model.summary),
+                remainingText: primaryWindowRemainingText(now: context.date),
+                supportText: heroSupportText,
+                fallbackTitle: model.summary.isEstimated ? "Est." : "Local",
+                fallbackValue: estimatedFiveHourValue,
+                palette: .primary(statusLevel: primaryStatusLevel),
+                accessibilityLabel: "5-hour rate limit"
+            )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    @ViewBuilder
-    private var fiveHourGauge: some View {
-        if let percent = model.summary.primaryUsedPercent {
-            ZStack {
-                Circle()
-                    .stroke(Color.secondary.opacity(0.18), lineWidth: 14)
-                Circle()
-                    .trim(from: 0, to: clamped(percent) / 100)
-                    .stroke(statusColor, style: StrokeStyle(lineWidth: 14, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                VStack(spacing: 3) {
-                    Text("5-hour")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("\(UsageFormatting.percent(percent))%")
-                        .font(.title.weight(.bold))
-                        .monospacedDigit()
-                }
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("5-hour rate limit")
-            .accessibilityValue("\(UsageFormatting.percent(percent)) percent used")
-        } else {
-            ZStack {
-                Circle()
-                    .stroke(Color.secondary.opacity(0.2), lineWidth: 14)
-                VStack(spacing: 3) {
-                    Text(model.summary.isEstimated ? "Est." : "Local")
-                        .font(.headline)
-                    Text(estimatedGaugeValue)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                .padding(18)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("5-hour usage estimate")
-            .accessibilityValue(estimatedGaugeValue)
-        }
-    }
-
     private var weeklySection: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Label("7-day window", systemImage: "calendar")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text(StatusFormatter.sevenDayDetail(summary: model.summary))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            TimelineView(.periodic(from: Date(), by: 60)) { context in
-                secondaryWindowRemainingLabel(now: context.date)
-            }
-            ProgressView(value: weeklyProgress)
-                .tint(.blue)
+        TimelineView(.periodic(from: Date(), by: 60)) { context in
+            CircularSplitFaceMeter(
+                title: "7-day window",
+                percent: model.summary.secondaryUsedPercent,
+                percentDetail: StatusFormatter.sevenDayDetail(summary: model.summary),
+                remainingText: secondaryWindowRemainingText(now: context.date),
+                supportText: weeklySupportText,
+                fallbackTitle: model.summary.isEstimated ? "Est." : "Local",
+                fallbackValue: estimatedWeeklyValue,
+                palette: .secondary(statusLevel: secondaryStatusLevel),
+                accessibilityLabel: "7-day rate limit"
+            )
         }
     }
 
@@ -616,10 +566,14 @@ struct MeterPopoverView: View {
         case .normal:
             return .green
         case .warning:
-            return .orange
+            return activeRateLimitWindow == .secondary ? .blue : .orange
         case .danger:
-            return .red
+            return activeRateLimitWindow == .secondary ? .purple : .red
         }
+    }
+
+    private var activeRateLimitWindow: RateLimitWindow? {
+        StatusFormatter.activeRateLimitWindow(summary: model.summary, settings: model.settings)
     }
 
     private var heroSupportText: String {
@@ -632,55 +586,72 @@ struct MeterPopoverView: View {
         return model.summary.isEstimated ? "Using local message counts until rate-limit data appears." : "Using local token counts."
     }
 
-    private var estimatedGaugeValue: String {
+    private var weeklySupportText: String {
+        if model.summary.secondaryUsedPercent != nil {
+            return "Based on the latest local Codex rate-limit event."
+        }
+        return model.summary.isEstimated ? "Using local message counts until rate-limit data appears." : "Using local token counts."
+    }
+
+    private var estimatedFiveHourValue: String {
         if model.summary.isEstimated {
             return "~\(model.summary.fiveHourMessages ?? 0) msgs"
         }
         return UsageFormatting.tokens(model.summary.fiveHourTokens) ?? "0 tokens"
     }
 
-    private var weeklyProgress: Double {
-        clamped(model.summary.secondaryUsedPercent ?? 0) / 100
+    private var estimatedWeeklyValue: String {
+        if model.summary.isEstimated {
+            return "~\(model.summary.sevenDayMessages ?? 0) msgs"
+        }
+        return UsageFormatting.tokens(model.summary.sevenDayTokens) ?? "0 tokens"
+    }
+
+    private var primaryStatusLevel: StatusLevel {
+        level(for: model.summary.primaryUsedPercent)
+    }
+
+    private var secondaryStatusLevel: StatusLevel {
+        level(for: model.summary.secondaryUsedPercent)
     }
 
     private func clamped(_ percent: Double) -> Double {
         min(max(percent, 0), 100)
     }
 
-    private func primaryWindowRemainingLabel(now: Date) -> some View {
+    private func level(for percent: Double?) -> StatusLevel {
+        guard let percent else {
+            return .normal
+        }
+        if percent >= model.settings.dangerThresholdPercent {
+            return .danger
+        }
+        if percent >= model.settings.warningThresholdPercent {
+            return .warning
+        }
+        return .normal
+    }
+
+    private func primaryWindowRemainingText(now: Date) -> String {
         if let resetsAt = model.summary.primaryResetsAt {
-            return windowRemainingLabel(text: UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now))
+            return UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now)
         }
-        return windowRemainingLabel(
-            text: UsageFormatting.windowRemaining(
-                lastActivity: model.summary.lastActivity,
-                duration: 5 * 60 * 60,
-                now: now
-            )
+        return UsageFormatting.windowRemaining(
+            lastActivity: model.summary.lastActivity,
+            duration: 5 * 60 * 60,
+            now: now
         )
     }
 
-    private func secondaryWindowRemainingLabel(now: Date) -> some View {
+    private func secondaryWindowRemainingText(now: Date) -> String {
         if let resetsAt = model.summary.secondaryResetsAt {
-            return windowRemainingLabel(text: UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now))
+            return UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now)
         }
-        return windowRemainingLabel(
-            text: UsageFormatting.windowRemaining(
-                lastActivity: model.summary.lastActivity,
-                duration: 7 * 24 * 60 * 60,
-                now: now
-            )
+        return UsageFormatting.windowRemaining(
+            lastActivity: model.summary.lastActivity,
+            duration: 7 * 24 * 60 * 60,
+            now: now
         )
-    }
-
-    private func windowRemainingLabel(text: String) -> some View {
-        Label(
-            text,
-            systemImage: "timer"
-        )
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {
@@ -693,6 +664,156 @@ struct MeterPopoverView: View {
                 .lineLimit(2)
                 .textSelection(.enabled)
         }
+    }
+}
+
+struct MeterPalette {
+    var ring: Color
+    var time: Color
+
+    static func primary(statusLevel: StatusLevel) -> MeterPalette {
+        switch statusLevel {
+        case .normal:
+            return MeterPalette(ring: .green, time: .secondary)
+        case .warning:
+            return MeterPalette(ring: .orange, time: .secondary)
+        case .danger:
+            return MeterPalette(ring: .red, time: .secondary)
+        }
+    }
+
+    static func secondary(statusLevel: StatusLevel) -> MeterPalette {
+        switch statusLevel {
+        case .normal:
+            return MeterPalette(ring: .teal, time: .indigo)
+        case .warning:
+            return MeterPalette(ring: .blue, time: .indigo)
+        case .danger:
+            return MeterPalette(ring: .purple, time: .indigo)
+        }
+    }
+}
+
+struct CircularSplitFaceMeter: View {
+    var title: String
+    var percent: Double?
+    var percentDetail: String
+    var remainingText: String
+    var supportText: String
+    var fallbackTitle: String
+    var fallbackValue: String
+    var palette: MeterPalette
+    var accessibilityLabel: String
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 18) {
+            circularDisplay
+                .frame(width: 142, height: 142)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(percentDetail)
+                    .font(.title3.weight(.semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+                    .textSelection(.enabled)
+                Label(remainingText, systemImage: "timer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(supportText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var circularDisplay: some View {
+        if let percent {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.18), lineWidth: 14)
+                Circle()
+                    .trim(from: 0, to: clamped(percent) / 100)
+                    .stroke(palette.ring, style: StrokeStyle(lineWidth: 14, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                splitFace(percent: percent)
+                    .padding(22)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue("\(UsageFormatting.percent(percent)) percent used, \(remainingText)")
+        } else {
+            ZStack {
+                Circle()
+                    .stroke(Color.secondary.opacity(0.2), lineWidth: 14)
+                VStack(spacing: 5) {
+                    Text(fallbackTitle)
+                        .font(.headline)
+                    Text(fallbackValue)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.68)
+                }
+                .padding(18)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(accessibilityLabel) estimate")
+            .accessibilityValue("\(fallbackValue), \(remainingText)")
+        }
+    }
+
+    private func splitFace(percent: Double) -> some View {
+        VStack(spacing: 0) {
+            VStack(spacing: 2) {
+                Text("used")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("\(UsageFormatting.percent(percent))%")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundStyle(palette.ring)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Divider()
+
+            VStack(spacing: 2) {
+                Text("remaining")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text(shortRemainingText)
+                    .font(.system(size: 17, weight: .bold, design: .rounded))
+                    .foregroundStyle(palette.time)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(.background, in: Circle())
+        .overlay {
+            Circle()
+                .stroke(Color.secondary.opacity(0.16), lineWidth: 1)
+        }
+    }
+
+    private var shortRemainingText: String {
+        remainingText
+            .replacingOccurrences(of: "Clears in ", with: "")
+            .replacingOccurrences(of: "No active window", with: "inactive")
+    }
+
+    private func clamped(_ percent: Double) -> Double {
+        min(max(percent, 0), 100)
     }
 }
 

@@ -53,9 +53,9 @@ open "dist/Codex Local Meter.app"
 
 The app runs as a menu bar utility, so it does not open a Dock window. Look for the Codex usage text in the macOS menu bar.
 
-## Install to Applications
+## Install to User Applications
 
-After packaging, install the app into `/Applications`:
+After packaging, install the app into `~/Applications`:
 
 ```bash
 ./scripts/install-app.sh
@@ -64,7 +64,7 @@ After packaging, install the app into `/Applications`:
 Then launch the installed app:
 
 ```bash
-open "/Applications/Codex Local Meter.app"
+open "$HOME/Applications/Codex Local Meter.app"
 ```
 
 If macOS says the app is already running, quit the menu bar copy first and run the install command again.

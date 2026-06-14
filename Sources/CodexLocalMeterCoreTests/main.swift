@@ -217,6 +217,53 @@ enum CoreTestRunner {
             expect(StatusFormatter.statusLevel(summary: noPercent, settings: settings) == .normal, "expected normal when no percent is available")
         }
 
+        await test("status formatter chooses warning and danger levels from either rate limit window", failures: &failures) {
+            let settings = MeterSettings(
+                codexPath: "/tmp/codex",
+                refreshIntervalSeconds: 300,
+                showFiveHourUsage: true,
+                showWeeklyUsage: true,
+                warningThresholdPercent: 70,
+                dangerThresholdPercent: 90,
+                compactMode: false
+            )
+
+            var weeklyWarning = UsageSummary(isEstimated: false, codexPath: "/tmp/codex", sessionCount: 1, modelNames: [], parseErrors: [])
+            weeklyWarning.primaryUsedPercent = 42
+            weeklyWarning.secondaryUsedPercent = 82
+            expect(StatusFormatter.statusLevel(summary: weeklyWarning, settings: settings) == .warning, "expected weekly warning to influence status")
+            expect(StatusFormatter.statusText(summary: weeklyWarning, settings: settings) == "82% 7d", "expected menu text to show weekly culprit")
+
+            var weeklyDanger = weeklyWarning
+            weeklyDanger.secondaryUsedPercent = 91
+            expect(StatusFormatter.statusLevel(summary: weeklyDanger, settings: settings) == .danger, "expected weekly danger to influence status")
+            expect(StatusFormatter.statusText(summary: weeklyDanger, settings: settings) == "91% 7d", "expected menu text to show weekly danger culprit")
+        }
+
+        await test("status formatter prefers five-hour window when rate limit severities tie", failures: &failures) {
+            let settings = MeterSettings(
+                codexPath: "/tmp/codex",
+                refreshIntervalSeconds: 300,
+                showFiveHourUsage: true,
+                showWeeklyUsage: true,
+                warningThresholdPercent: 70,
+                dangerThresholdPercent: 90,
+                compactMode: false
+            )
+
+            var tiedWarning = UsageSummary(isEstimated: false, codexPath: "/tmp/codex", sessionCount: 1, modelNames: [], parseErrors: [])
+            tiedWarning.primaryUsedPercent = 72
+            tiedWarning.secondaryUsedPercent = 88
+            expect(StatusFormatter.statusLevel(summary: tiedWarning, settings: settings) == .warning, "expected tied warning severity")
+            expect(StatusFormatter.statusText(summary: tiedWarning, settings: settings) == "72% 5h", "expected five-hour text when warning severities tie")
+
+            var tiedDanger = tiedWarning
+            tiedDanger.primaryUsedPercent = 91
+            tiedDanger.secondaryUsedPercent = 98
+            expect(StatusFormatter.statusLevel(summary: tiedDanger, settings: settings) == .danger, "expected tied danger severity")
+            expect(StatusFormatter.statusText(summary: tiedDanger, settings: settings) == "91% 5h", "expected five-hour text when danger severities tie")
+        }
+
         await test("diagnostics exclude prompt and response content", failures: &failures) {
             var summary = UsageSummary(isEstimated: true, codexPath: "/tmp/codex", sessionCount: 1, modelNames: ["gpt-5"], parseErrors: [])
             summary.fiveHourMessages = 1
