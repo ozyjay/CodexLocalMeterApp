@@ -32,9 +32,12 @@ public struct UsageCalculator: Sendable {
         var lastActivity: Date?
         var sessionIds = Set<String>()
         var modelNames = Set<String>()
-        var latestRateLimitTimestamp: Date?
+        var latestPrimaryRateLimitTimestamp: Date?
+        var latestSecondaryRateLimitTimestamp: Date?
         var latestPrimaryUsedPercent: Double?
         var latestSecondaryUsedPercent: Double?
+        var latestPrimaryResetsAt: Date?
+        var latestSecondaryResetsAt: Date?
 
         for event in events {
             if lastActivity == nil || event.timestamp > lastActivity! {
@@ -50,15 +53,20 @@ public struct UsageCalculator: Sendable {
             }
 
             if event.timestamp >= fiveHourCutoff,
-               event.primaryUsedPercent != nil || event.secondaryUsedPercent != nil {
-                if latestRateLimitTimestamp == nil || event.timestamp > latestRateLimitTimestamp! {
-                    latestRateLimitTimestamp = event.timestamp
-                    if let primary = event.primaryUsedPercent {
-                        latestPrimaryUsedPercent = primary
-                    }
-                    if let secondary = event.secondaryUsedPercent {
-                        latestSecondaryUsedPercent = secondary
-                    }
+               event.primaryUsedPercent != nil || event.primaryResetsAt != nil {
+                if latestPrimaryRateLimitTimestamp == nil || event.timestamp > latestPrimaryRateLimitTimestamp! {
+                    latestPrimaryRateLimitTimestamp = event.timestamp
+                    latestPrimaryUsedPercent = event.primaryUsedPercent
+                    latestPrimaryResetsAt = event.primaryResetsAt
+                }
+            }
+
+            if event.timestamp >= sevenDayCutoff,
+               event.secondaryUsedPercent != nil || event.secondaryResetsAt != nil {
+                if latestSecondaryRateLimitTimestamp == nil || event.timestamp > latestSecondaryRateLimitTimestamp! {
+                    latestSecondaryRateLimitTimestamp = event.timestamp
+                    latestSecondaryUsedPercent = event.secondaryUsedPercent
+                    latestSecondaryResetsAt = event.secondaryResetsAt
                 }
             }
 
@@ -84,7 +92,9 @@ public struct UsageCalculator: Sendable {
             modelNames: modelNames.sorted(),
             parseErrors: parseErrors,
             primaryUsedPercent: latestPrimaryUsedPercent,
-            secondaryUsedPercent: latestSecondaryUsedPercent
+            secondaryUsedPercent: latestSecondaryUsedPercent,
+            primaryResetsAt: latestPrimaryResetsAt,
+            secondaryResetsAt: latestSecondaryResetsAt
         )
 
         if hasTokens {
@@ -144,7 +154,19 @@ public enum UsageFormatting {
             return "No active window"
         }
 
-        let remainingSeconds = lastActivity.addingTimeInterval(duration).timeIntervalSince(now)
+        return remaining(until: lastActivity.addingTimeInterval(duration), now: now)
+    }
+
+    public static func resetRemaining(resetsAt: Date?, now: Date = Date()) -> String {
+        guard let resetsAt else {
+            return "No active window"
+        }
+
+        return remaining(until: resetsAt, now: now)
+    }
+
+    private static func remaining(until endDate: Date, now: Date) -> String {
+        let remainingSeconds = endDate.timeIntervalSince(now)
         guard remainingSeconds > 0 else {
             return "No active window"
         }

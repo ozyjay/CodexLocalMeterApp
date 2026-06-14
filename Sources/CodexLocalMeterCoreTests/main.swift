@@ -20,7 +20,7 @@ enum CoreTestRunner {
             try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
             let file = sessions.appendingPathComponent("abc.jsonl")
             let jsonl = """
-            {"timestamp":"2026-05-30T01:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"output_tokens":30}},"rate_limits":{"primary":{"used_percent":42.4},"secondary":{"used_percent":18.2}}}}
+            {"timestamp":"2026-05-30T01:00:00Z","type":"event_msg","payload":{"type":"token_count","info":{"last_token_usage":{"input_tokens":120,"output_tokens":30}},"rate_limits":{"primary":{"used_percent":42.4,"resets_at":1781422386,"window_minutes":300},"secondary":{"used_percent":18.2,"resets_at":1781847921,"window_minutes":10080}}}}
             {"timestamp":"2026-05-30T01:01:00Z","type":"event_msg","payload":{"type":"user_message","message":"private prompt must not surface"}}
             {"timestamp":"2026-05-30T01:02:00Z","type":"response_item","payload":{"text":"private answer must not surface"}}
             """
@@ -33,6 +33,8 @@ enum CoreTestRunner {
             expect(result.events[0].outputTokens == 30, "expected output tokens")
             expect(result.events[0].primaryUsedPercent == 42.4, "expected primary rate limit")
             expect(result.events[0].secondaryUsedPercent == 18.2, "expected secondary rate limit")
+            expect(result.events[0].primaryResetsAt == Date(timeIntervalSince1970: 1_781_422_386), "expected primary reset timestamp")
+            expect(result.events[0].secondaryResetsAt == Date(timeIntervalSince1970: 1_781_847_921), "expected secondary reset timestamp")
             expect(result.events[1].messageCount == 1, "expected user message fallback count")
             expect(result.parseErrors.isEmpty, "expected no parse errors")
         }
@@ -58,8 +60,8 @@ enum CoreTestRunner {
         await test("usage calculator handles windows sessions models and latest rate limits", failures: &failures) {
             let now = Date(timeIntervalSince1970: 1_800_000_000)
             let events = [
-                RawEvent(sessionId: "a", timestamp: now.addingTimeInterval(-60), model: "gpt-5", inputTokens: 10, outputTokens: 5, primaryUsedPercent: 30),
-                RawEvent(sessionId: "b", timestamp: now.addingTimeInterval(-4 * 60 * 60), model: "gpt-5-mini", inputTokens: 20, outputTokens: 10, secondaryUsedPercent: 44),
+                RawEvent(sessionId: "a", timestamp: now.addingTimeInterval(-60), model: "gpt-5", inputTokens: 10, outputTokens: 5, primaryUsedPercent: 30, primaryResetsAt: now.addingTimeInterval(2 * 60 * 60)),
+                RawEvent(sessionId: "b", timestamp: now.addingTimeInterval(-4 * 60 * 60), model: "gpt-5-mini", inputTokens: 20, outputTokens: 10, secondaryUsedPercent: 44, secondaryResetsAt: now.addingTimeInterval(6 * 24 * 60 * 60)),
                 RawEvent(sessionId: "old", timestamp: now.addingTimeInterval(-8 * 24 * 60 * 60), inputTokens: 999, outputTokens: 999, primaryUsedPercent: 99)
             ]
 
@@ -71,7 +73,9 @@ enum CoreTestRunner {
             expect(summary.sessionCount == 2, "expected seven-day session count")
             expect(summary.modelNames == ["gpt-5", "gpt-5-mini"], "expected sorted model names")
             expect(summary.primaryUsedPercent == 30, "expected latest primary value from latest rate-limit event")
-            expect(summary.secondaryUsedPercent == nil, "expected older secondary value after a newer primary not to replace latest rate-limit state")
+            expect(summary.secondaryUsedPercent == 44, "expected latest secondary value from seven-day rate-limit event")
+            expect(summary.primaryResetsAt == now.addingTimeInterval(2 * 60 * 60), "expected latest primary reset timestamp")
+            expect(summary.secondaryResetsAt == now.addingTimeInterval(6 * 24 * 60 * 60), "expected latest secondary reset timestamp")
         }
 
         await test("usage calculator falls back to message counts", failures: &failures) {
@@ -94,15 +98,31 @@ enum CoreTestRunner {
         await test("usage calculator ignores stale five-hour rate limit values", failures: &failures) {
             let now = Date(timeIntervalSince1970: 1_800_000_000)
             let events = [
-                RawEvent(sessionId: "old", timestamp: now.addingTimeInterval((-5 * 60 * 60) - 1), inputTokens: 20, outputTokens: 10, primaryUsedPercent: 82),
+                RawEvent(sessionId: "old", timestamp: now.addingTimeInterval((-5 * 60 * 60) - 1), inputTokens: 20, outputTokens: 10, primaryUsedPercent: 82, primaryResetsAt: now.addingTimeInterval(60)),
                 RawEvent(sessionId: "recent", timestamp: now.addingTimeInterval(-60), inputTokens: 1, outputTokens: 2)
             ]
 
             let summary = UsageCalculator(now: { now }).calculate(events: events, codexPath: "/tmp/codex", parseErrors: [])
 
             expect(summary.primaryUsedPercent == nil, "expected stale five-hour rate limit to be ignored")
+            expect(summary.primaryResetsAt == nil, "expected stale five-hour reset to be ignored")
             expect(summary.fiveHourTokens == 3, "expected fresh local tokens to remain available")
             expect(summary.sevenDayTokens == 33, "expected stale rate-limit event tokens to remain in seven-day total")
+        }
+
+        await test("usage calculator pairs percent and reset timestamps from latest rate-limit event", failures: &failures) {
+            let now = Date(timeIntervalSince1970: 1_800_000_000)
+            let olderReset = now.addingTimeInterval(60 * 60)
+            let newerReset = now.addingTimeInterval(2 * 60 * 60)
+            let events = [
+                RawEvent(sessionId: "older", timestamp: now.addingTimeInterval(-120), primaryUsedPercent: 80, primaryResetsAt: olderReset),
+                RawEvent(sessionId: "newer", timestamp: now.addingTimeInterval(-60), primaryUsedPercent: 25, primaryResetsAt: newerReset)
+            ]
+
+            let summary = UsageCalculator(now: { now }).calculate(events: events, codexPath: "/tmp/codex", parseErrors: [])
+
+            expect(summary.primaryUsedPercent == 25, "expected percent from latest rate-limit event")
+            expect(summary.primaryResetsAt == newerReset, "expected reset timestamp from latest rate-limit event")
         }
 
         await test("status formatter shows rate limits tokens messages and empty state", failures: &failures) {
@@ -132,6 +152,8 @@ enum CoreTestRunner {
             let now = Date(timeIntervalSince1970: 1_800_000_000)
             let recentActivity = now.addingTimeInterval(-(1 * 60 * 60) - (12 * 60))
             let staleActivity = now.addingTimeInterval((-5 * 60 * 60) - 1)
+            let primaryReset = now.addingTimeInterval((3 * 60 * 60) + (48 * 60))
+            let secondaryReset = now.addingTimeInterval((6 * 24 * 60 * 60) + (22 * 60 * 60))
 
             expect(
                 UsageFormatting.windowRemaining(lastActivity: recentActivity, duration: 5 * 60 * 60, now: now) == "Clears in 3h 48m",
@@ -148,6 +170,22 @@ enum CoreTestRunner {
             expect(
                 UsageFormatting.windowRemaining(lastActivity: nil, duration: 5 * 60 * 60, now: now) == "No active window",
                 "expected missing activity to be inactive"
+            )
+            expect(
+                UsageFormatting.resetRemaining(resetsAt: primaryReset, now: now) == "Clears in 3h 48m",
+                "expected primary reset hours and minutes remaining"
+            )
+            expect(
+                UsageFormatting.resetRemaining(resetsAt: secondaryReset, now: now) == "Clears in 6d 22h",
+                "expected secondary reset days and hours remaining"
+            )
+            expect(
+                UsageFormatting.resetRemaining(resetsAt: staleActivity, now: now) == "No active window",
+                "expected expired reset to be inactive"
+            )
+            expect(
+                UsageFormatting.resetRemaining(resetsAt: nil, now: now) == "No active window",
+                "expected missing reset to be inactive"
             )
         }
 

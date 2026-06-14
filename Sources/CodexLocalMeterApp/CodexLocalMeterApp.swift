@@ -392,7 +392,7 @@ struct MeterPopoverView: View {
                     .minimumScaleFactor(0.8)
                     .textSelection(.enabled)
                 TimelineView(.periodic(from: Date(), by: 60)) { context in
-                    windowRemainingLabel(duration: 5 * 60 * 60, now: context.date)
+                    primaryWindowRemainingLabel(now: context.date)
                 }
                 Text(heroSupportText)
                     .font(.caption)
@@ -461,7 +461,7 @@ struct MeterPopoverView: View {
                     .lineLimit(1)
             }
             TimelineView(.periodic(from: Date(), by: 60)) { context in
-                windowRemainingLabel(duration: 7 * 24 * 60 * 60, now: context.date)
+                secondaryWindowRemainingLabel(now: context.date)
             }
             ProgressView(value: weeklyProgress)
                 .tint(.blue)
@@ -647,13 +647,35 @@ struct MeterPopoverView: View {
         min(max(percent, 0), 100)
     }
 
-    private func windowRemainingLabel(duration: TimeInterval, now: Date) -> some View {
-        Label(
-            UsageFormatting.windowRemaining(
+    private func primaryWindowRemainingLabel(now: Date) -> some View {
+        if let resetsAt = model.summary.primaryResetsAt {
+            return windowRemainingLabel(text: UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now))
+        }
+        return windowRemainingLabel(
+            text: UsageFormatting.windowRemaining(
                 lastActivity: model.summary.lastActivity,
-                duration: duration,
+                duration: 5 * 60 * 60,
                 now: now
-            ),
+            )
+        )
+    }
+
+    private func secondaryWindowRemainingLabel(now: Date) -> some View {
+        if let resetsAt = model.summary.secondaryResetsAt {
+            return windowRemainingLabel(text: UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now))
+        }
+        return windowRemainingLabel(
+            text: UsageFormatting.windowRemaining(
+                lastActivity: model.summary.lastActivity,
+                duration: 7 * 24 * 60 * 60,
+                now: now
+            )
+        )
+    }
+
+    private func windowRemainingLabel(text: String) -> some View {
+        Label(
+            text,
             systemImage: "timer"
         )
         .font(.caption)

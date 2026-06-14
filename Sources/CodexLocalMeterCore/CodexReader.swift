@@ -126,12 +126,16 @@ public struct CodexReader {
 
             var primaryUsedPercent: Double?
             var secondaryUsedPercent: Double?
+            var primaryResetsAt: Date?
+            var secondaryResetsAt: Date?
             if let rateLimits = payload["rate_limits"] as? [String: Any] {
                 if let primary = rateLimits["primary"] as? [String: Any] {
                     primaryUsedPercent = resolveDouble(primary, "used_percent")
+                    primaryResetsAt = resolveEpochSeconds(primary, "resets_at")
                 }
                 if let secondary = rateLimits["secondary"] as? [String: Any] {
                     secondaryUsedPercent = resolveDouble(secondary, "used_percent")
+                    secondaryResetsAt = resolveEpochSeconds(secondary, "resets_at")
                 }
             }
 
@@ -141,7 +145,9 @@ public struct CodexReader {
                 inputTokens: inputTokens,
                 outputTokens: outputTokens,
                 primaryUsedPercent: primaryUsedPercent,
-                secondaryUsedPercent: secondaryUsedPercent
+                secondaryUsedPercent: secondaryUsedPercent,
+                primaryResetsAt: primaryResetsAt,
+                secondaryResetsAt: secondaryResetsAt
             )
         }
 
@@ -186,6 +192,13 @@ private func resolveDouble(_ object: [String: Any], _ key: String) -> Double? {
     }
     if let value = object[key] as? NSNumber {
         return value.doubleValue
+    }
+    return nil
+}
+
+private func resolveEpochSeconds(_ object: [String: Any], _ key: String) -> Date? {
+    if let value = object[key] as? NSNumber {
+        return Date(timeIntervalSince1970: value.doubleValue)
     }
     return nil
 }

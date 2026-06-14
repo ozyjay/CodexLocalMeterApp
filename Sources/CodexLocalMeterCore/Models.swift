@@ -9,6 +9,8 @@ public struct RawEvent: Sendable {
     public var messageCount: Int?
     public var primaryUsedPercent: Double?
     public var secondaryUsedPercent: Double?
+    public var primaryResetsAt: Date?
+    public var secondaryResetsAt: Date?
 
     public init(
         sessionId: String,
@@ -18,7 +20,9 @@ public struct RawEvent: Sendable {
         outputTokens: Int? = nil,
         messageCount: Int? = nil,
         primaryUsedPercent: Double? = nil,
-        secondaryUsedPercent: Double? = nil
+        secondaryUsedPercent: Double? = nil,
+        primaryResetsAt: Date? = nil,
+        secondaryResetsAt: Date? = nil
     ) {
         self.sessionId = sessionId
         self.timestamp = timestamp
@@ -28,6 +32,8 @@ public struct RawEvent: Sendable {
         self.messageCount = messageCount
         self.primaryUsedPercent = primaryUsedPercent
         self.secondaryUsedPercent = secondaryUsedPercent
+        self.primaryResetsAt = primaryResetsAt
+        self.secondaryResetsAt = secondaryResetsAt
     }
 }
 
@@ -54,6 +60,8 @@ public struct UsageSummary: Sendable {
     public var parseErrors: [String]
     public var primaryUsedPercent: Double?
     public var secondaryUsedPercent: Double?
+    public var primaryResetsAt: Date?
+    public var secondaryResetsAt: Date?
 
     public init(
         fiveHourTokens: Int? = nil,
@@ -67,7 +75,9 @@ public struct UsageSummary: Sendable {
         modelNames: [String],
         parseErrors: [String],
         primaryUsedPercent: Double? = nil,
-        secondaryUsedPercent: Double? = nil
+        secondaryUsedPercent: Double? = nil,
+        primaryResetsAt: Date? = nil,
+        secondaryResetsAt: Date? = nil
     ) {
         self.fiveHourTokens = fiveHourTokens
         self.fiveHourMessages = fiveHourMessages
@@ -81,6 +91,8 @@ public struct UsageSummary: Sendable {
         self.parseErrors = parseErrors
         self.primaryUsedPercent = primaryUsedPercent
         self.secondaryUsedPercent = secondaryUsedPercent
+        self.primaryResetsAt = primaryResetsAt
+        self.secondaryResetsAt = secondaryResetsAt
     }
 }
 
