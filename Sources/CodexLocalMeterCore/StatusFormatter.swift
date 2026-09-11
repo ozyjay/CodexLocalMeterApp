@@ -28,10 +28,7 @@ public enum StatusFormatter {
 
         if let activeWindow = activeRateLimitWindow(summary: summary, settings: settings),
            let percent = percent(for: activeWindow, summary: summary) {
-            if settings.compactMode, activeWindow == .primary {
-                return "\(UsageFormatting.percent(percent))%"
-            }
-            return "\(UsageFormatting.percent(percent))% \(activeWindow.menuSuffix)"
+            return "\(UsageFormatting.percent(percent))%"
         }
 
         if settings.compactMode {

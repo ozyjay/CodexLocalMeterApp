@@ -21,7 +21,8 @@ public final class SettingsStore: @unchecked Sendable {
             showWeeklyUsage: defaults.object(forKey: "showWeeklyUsage") as? Bool ?? true,
             warningThresholdPercent: warning,
             dangerThresholdPercent: danger,
-            compactMode: defaults.object(forKey: "compactMode") as? Bool ?? false
+            compactMode: defaults.object(forKey: "compactMode") as? Bool ?? false,
+            liveAccountTelemetry: defaults.object(forKey: "liveAccountTelemetry") as? Bool ?? false
         )
     }
 
@@ -35,5 +36,9 @@ public final class SettingsStore: @unchecked Sendable {
 
     public func saveCompactMode(_ compactMode: Bool) {
         defaults.set(compactMode, forKey: "compactMode")
+    }
+
+    public func saveLiveAccountTelemetry(_ enabled: Bool) {
+        defaults.set(enabled, forKey: "liveAccountTelemetry")
     }
 }

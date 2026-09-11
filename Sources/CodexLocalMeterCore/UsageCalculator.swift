@@ -21,6 +21,9 @@ public struct UsageCalculator: Sendable {
         let current = now()
         let fiveHourCutoff = current.addingTimeInterval(-5 * 60 * 60)
         let sevenDayCutoff = current.addingTimeInterval(-7 * 24 * 60 * 60)
+        let activityWindowMinutes = 15
+        let activityCutoff = current.addingTimeInterval(-Double(activityWindowMinutes * 60))
+        let previousActivityCutoff = current.addingTimeInterval(-Double(activityWindowMinutes * 2 * 60))
 
         var fiveHourInputTokens = 0
         var fiveHourOutputTokens = 0
@@ -28,6 +31,10 @@ public struct UsageCalculator: Sendable {
         var sevenDayInputTokens = 0
         var sevenDayOutputTokens = 0
         var sevenDayMessages = 0
+        var currentRateTokens = 0
+        var previousRateTokens = 0
+        var currentRateMessages = 0
+        var previousRateMessages = 0
         var hasTokens = false
         var lastActivity: Date?
         var sessionIds = Set<String>()
@@ -50,6 +57,16 @@ public struct UsageCalculator: Sendable {
 
             if event.inputTokens != nil || event.outputTokens != nil {
                 hasTokens = true
+            }
+
+            let eventTokens = (event.inputTokens ?? 0) + (event.outputTokens ?? 0)
+            let eventMessages = event.messageCount ?? 0
+            if event.timestamp >= activityCutoff {
+                currentRateTokens += eventTokens
+                currentRateMessages += eventMessages
+            } else if event.timestamp >= previousActivityCutoff {
+                previousRateTokens += eventTokens
+                previousRateMessages += eventMessages
             }
 
             if event.timestamp >= fiveHourCutoff,
@@ -97,12 +114,33 @@ public struct UsageCalculator: Sendable {
             secondaryResetsAt: latestSecondaryResetsAt
         )
 
+        if let primary = latestPrimaryRateLimitTimestamp, let secondary = latestSecondaryRateLimitTimestamp {
+            summary.rateLimitsObservedAt = max(primary, secondary)
+        } else {
+            summary.rateLimitsObservedAt = latestPrimaryRateLimitTimestamp ?? latestSecondaryRateLimitTimestamp
+        }
+        if summary.rateLimitsObservedAt != nil {
+            summary.rateLimitSource = .local
+        }
+
         if hasTokens {
             summary.fiveHourTokens = fiveHourInputTokens + fiveHourOutputTokens
             summary.sevenDayTokens = sevenDayInputTokens + sevenDayOutputTokens
+            summary.activityRate = ActivityRate(
+                unit: .tokens,
+                windowMinutes: activityWindowMinutes,
+                currentPerMinute: Double(currentRateTokens) / Double(activityWindowMinutes),
+                previousPerMinute: Double(previousRateTokens) / Double(activityWindowMinutes)
+            )
         } else {
             summary.fiveHourMessages = fiveHourMessages
             summary.sevenDayMessages = sevenDayMessages
+            summary.activityRate = ActivityRate(
+                unit: .messages,
+                windowMinutes: activityWindowMinutes,
+                currentPerMinute: Double(currentRateMessages) / Double(activityWindowMinutes),
+                previousPerMinute: Double(previousRateMessages) / Double(activityWindowMinutes)
+            )
         }
 
         return summary
@@ -129,6 +167,30 @@ public enum UsageFormatting {
 
     public static func percent(_ percent: Double) -> String {
         "\(Int(percent.rounded()))"
+    }
+
+    public static func activityRate(_ rate: ActivityRate?) -> String? {
+        guard let rate else { return nil }
+        let value: String
+        if rate.unit == .tokens {
+            value = tokens(Int(rate.currentPerMinute.rounded())) ?? "0"
+        } else {
+            value = rate.currentPerMinute >= 10
+                ? String(Int(rate.currentPerMinute.rounded()))
+                : String(format: "%.1f", rate.currentPerMinute)
+        }
+        return "\(rate.unit == .messages ? "~" : "")\(value) \(rate.unit.rawValue)/min"
+    }
+
+    public static func activityRateChange(_ rate: ActivityRate?) -> String? {
+        guard let rate else { return nil }
+        if rate.previousPerMinute == 0 {
+            return rate.currentPerMinute == 0
+                ? "No activity in either \(rate.windowMinutes)-minute period"
+                : "New activity vs previous \(rate.windowMinutes) min"
+        }
+        let change = Int((((rate.currentPerMinute - rate.previousPerMinute) / rate.previousPerMinute) * 100).rounded())
+        return "\(change > 0 ? "+" : "")\(change)% vs previous \(rate.windowMinutes) min"
     }
 
     public static func relativeTime(_ date: Date?, now: Date = Date()) -> String {

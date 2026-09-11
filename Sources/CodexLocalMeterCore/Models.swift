@@ -62,6 +62,11 @@ public struct UsageSummary: Sendable {
     public var secondaryUsedPercent: Double?
     public var primaryResetsAt: Date?
     public var secondaryResetsAt: Date?
+    public var rateLimitSource: RateLimitSource?
+    public var rateLimitsObservedAt: Date?
+    public var liveTelemetryEnabled: Bool
+    public var liveTelemetryError: String?
+    public var activityRate: ActivityRate?
 
     public init(
         fiveHourTokens: Int? = nil,
@@ -77,7 +82,12 @@ public struct UsageSummary: Sendable {
         primaryUsedPercent: Double? = nil,
         secondaryUsedPercent: Double? = nil,
         primaryResetsAt: Date? = nil,
-        secondaryResetsAt: Date? = nil
+        secondaryResetsAt: Date? = nil,
+        rateLimitSource: RateLimitSource? = nil,
+        rateLimitsObservedAt: Date? = nil,
+        liveTelemetryEnabled: Bool = false,
+        liveTelemetryError: String? = nil,
+        activityRate: ActivityRate? = nil
     ) {
         self.fiveHourTokens = fiveHourTokens
         self.fiveHourMessages = fiveHourMessages
@@ -93,6 +103,35 @@ public struct UsageSummary: Sendable {
         self.secondaryUsedPercent = secondaryUsedPercent
         self.primaryResetsAt = primaryResetsAt
         self.secondaryResetsAt = secondaryResetsAt
+        self.rateLimitSource = rateLimitSource
+        self.rateLimitsObservedAt = rateLimitsObservedAt
+        self.liveTelemetryEnabled = liveTelemetryEnabled
+        self.liveTelemetryError = liveTelemetryError
+        self.activityRate = activityRate
+    }
+}
+
+public enum RateLimitSource: String, Sendable {
+    case local
+    case live
+}
+
+public enum ActivityUnit: String, Sendable {
+    case tokens
+    case messages
+}
+
+public struct ActivityRate: Sendable {
+    public var unit: ActivityUnit
+    public var windowMinutes: Int
+    public var currentPerMinute: Double
+    public var previousPerMinute: Double
+
+    public init(unit: ActivityUnit, windowMinutes: Int, currentPerMinute: Double, previousPerMinute: Double) {
+        self.unit = unit
+        self.windowMinutes = windowMinutes
+        self.currentPerMinute = currentPerMinute
+        self.previousPerMinute = previousPerMinute
     }
 }
 
@@ -104,6 +143,7 @@ public struct MeterSettings: Sendable, Equatable {
     public var warningThresholdPercent: Double
     public var dangerThresholdPercent: Double
     public var compactMode: Bool
+    public var liveAccountTelemetry: Bool
 
     public init(
         codexPath: String,
@@ -112,7 +152,8 @@ public struct MeterSettings: Sendable, Equatable {
         showWeeklyUsage: Bool,
         warningThresholdPercent: Double,
         dangerThresholdPercent: Double,
-        compactMode: Bool
+        compactMode: Bool,
+        liveAccountTelemetry: Bool = false
     ) {
         self.codexPath = codexPath
         self.refreshIntervalSeconds = max(30, refreshIntervalSeconds)
@@ -121,6 +162,7 @@ public struct MeterSettings: Sendable, Equatable {
         self.warningThresholdPercent = min(max(warningThresholdPercent, 0), 100)
         self.dangerThresholdPercent = max(min(max(dangerThresholdPercent, 0), 100), self.warningThresholdPercent)
         self.compactMode = compactMode
+        self.liveAccountTelemetry = liveAccountTelemetry
     }
 
     public static var defaults: MeterSettings {
@@ -132,7 +174,8 @@ public struct MeterSettings: Sendable, Equatable {
             showWeeklyUsage: true,
             warningThresholdPercent: 70,
             dangerThresholdPercent: 90,
-            compactMode: false
+            compactMode: false,
+            liveAccountTelemetry: false
         )
     }
 }

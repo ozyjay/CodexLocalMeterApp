@@ -116,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 .foregroundColor: StatusBarColors.textColor(for: level, window: activeWindow)
             ]
         )
-        button.toolTip = "Codex Local Meter - \(model.menuBarValueText)"
+        button.toolTip = StatusBarTooltip.text(value: model.menuBarValueText, window: activeWindow)
         button.setAccessibilityLabel("Codex Local Meter")
         statusItem?.length = NSStatusItem.variableLength
         statusItem?.isVisible = true
@@ -167,12 +167,12 @@ enum StatusBarIcon {
 }
 
 enum StatusBarColors {
-    static func warning(for window: RateLimitWindow?) -> NSColor {
-        window == .secondary ? NSColor.systemBlue : NSColor.systemOrange
+    static func warning(for _: RateLimitWindow?) -> NSColor {
+        NSColor.systemOrange
     }
 
-    static func danger(for window: RateLimitWindow?) -> NSColor {
-        window == .secondary ? NSColor.systemPurple : NSColor.systemRed
+    static func danger(for _: RateLimitWindow?) -> NSColor {
+        NSColor.systemRed
     }
 
     static func textColor(for level: StatusLevel, window: RateLimitWindow?) -> NSColor {
@@ -183,6 +183,30 @@ enum StatusBarColors {
             return warning(for: window)
         case .danger:
             return danger(for: window)
+        }
+    }
+
+    static func swiftUIColor(for level: StatusLevel, window: RateLimitWindow?) -> Color {
+        Color(nsColor: textColor(for: level, window: window))
+    }
+}
+
+enum StatusBarTooltip {
+    static func text(value: String, window: RateLimitWindow?) -> String {
+        guard let window else {
+            return "Codex Local Meter - \(value)"
+        }
+        return "Codex Local Meter - \(value) \(window.tooltipSuffix)"
+    }
+}
+
+private extension RateLimitWindow {
+    var tooltipSuffix: String {
+        switch self {
+        case .primary:
+            return "5-hour window"
+        case .secondary:
+            return "7-day window"
         }
     }
 }
@@ -562,14 +586,7 @@ struct MeterPopoverView: View {
     }
 
     private var statusColor: Color {
-        switch statusLevel {
-        case .normal:
-            return .green
-        case .warning:
-            return activeRateLimitWindow == .secondary ? .blue : .orange
-        case .danger:
-            return activeRateLimitWindow == .secondary ? .purple : .red
-        }
+        StatusBarColors.swiftUIColor(for: statusLevel, window: activeRateLimitWindow)
     }
 
     private var activeRateLimitWindow: RateLimitWindow? {
@@ -672,25 +689,11 @@ struct MeterPalette {
     var time: Color
 
     static func primary(statusLevel: StatusLevel) -> MeterPalette {
-        switch statusLevel {
-        case .normal:
-            return MeterPalette(ring: .green, time: .secondary)
-        case .warning:
-            return MeterPalette(ring: .orange, time: .secondary)
-        case .danger:
-            return MeterPalette(ring: .red, time: .secondary)
-        }
+        MeterPalette(ring: StatusBarColors.swiftUIColor(for: statusLevel, window: .primary), time: .secondary)
     }
 
     static func secondary(statusLevel: StatusLevel) -> MeterPalette {
-        switch statusLevel {
-        case .normal:
-            return MeterPalette(ring: .teal, time: .indigo)
-        case .warning:
-            return MeterPalette(ring: .blue, time: .indigo)
-        case .danger:
-            return MeterPalette(ring: .purple, time: .indigo)
-        }
+        MeterPalette(ring: StatusBarColors.swiftUIColor(for: statusLevel, window: .secondary), time: .secondary)
     }
 }
 

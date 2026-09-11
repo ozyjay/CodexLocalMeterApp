@@ -134,7 +134,7 @@ enum CoreTestRunner {
                 parseErrors: [],
                 primaryUsedPercent: 42.4
             )
-            expect(StatusFormatter.statusText(summary: rateLimit, settings: .defaults) == "42% 5h", "expected rate-limit status text")
+            expect(StatusFormatter.statusText(summary: rateLimit, settings: .defaults) == "42%", "expected short rate-limit status text")
 
             var tokens = UsageSummary(isEstimated: false, codexPath: "/tmp/codex", sessionCount: 1, modelNames: [], parseErrors: [])
             tokens.fiveHourTokens = 12_400
@@ -232,12 +232,12 @@ enum CoreTestRunner {
             weeklyWarning.primaryUsedPercent = 42
             weeklyWarning.secondaryUsedPercent = 82
             expect(StatusFormatter.statusLevel(summary: weeklyWarning, settings: settings) == .warning, "expected weekly warning to influence status")
-            expect(StatusFormatter.statusText(summary: weeklyWarning, settings: settings) == "82% 7d", "expected menu text to show weekly culprit")
+            expect(StatusFormatter.statusText(summary: weeklyWarning, settings: settings) == "82%", "expected menu text to stay short for weekly culprit")
 
             var weeklyDanger = weeklyWarning
             weeklyDanger.secondaryUsedPercent = 91
             expect(StatusFormatter.statusLevel(summary: weeklyDanger, settings: settings) == .danger, "expected weekly danger to influence status")
-            expect(StatusFormatter.statusText(summary: weeklyDanger, settings: settings) == "91% 7d", "expected menu text to show weekly danger culprit")
+            expect(StatusFormatter.statusText(summary: weeklyDanger, settings: settings) == "91%", "expected menu text to stay short for weekly danger culprit")
         }
 
         await test("status formatter prefers five-hour window when rate limit severities tie", failures: &failures) {
@@ -255,13 +255,13 @@ enum CoreTestRunner {
             tiedWarning.primaryUsedPercent = 72
             tiedWarning.secondaryUsedPercent = 88
             expect(StatusFormatter.statusLevel(summary: tiedWarning, settings: settings) == .warning, "expected tied warning severity")
-            expect(StatusFormatter.statusText(summary: tiedWarning, settings: settings) == "72% 5h", "expected five-hour text when warning severities tie")
+            expect(StatusFormatter.statusText(summary: tiedWarning, settings: settings) == "72%", "expected short five-hour text when warning severities tie")
 
             var tiedDanger = tiedWarning
             tiedDanger.primaryUsedPercent = 91
             tiedDanger.secondaryUsedPercent = 98
             expect(StatusFormatter.statusLevel(summary: tiedDanger, settings: settings) == .danger, "expected tied danger severity")
-            expect(StatusFormatter.statusText(summary: tiedDanger, settings: settings) == "91% 5h", "expected five-hour text when danger severities tie")
+            expect(StatusFormatter.statusText(summary: tiedDanger, settings: settings) == "91%", "expected short five-hour text when danger severities tie")
         }
 
         await test("diagnostics exclude prompt and response content", failures: &failures) {
