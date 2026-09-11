@@ -226,6 +226,7 @@ final class MeterViewModel: ObservableObject {
     @Published var showingDiagnostics = false
     @Published var refreshIntervalText: String
     @Published var compactMode: Bool
+    @Published var liveAccountTelemetry: Bool
 
     private let settingsStore: SettingsStore
     private lazy var refreshScheduler = RefreshScheduler<Void> { [weak self] in
@@ -241,6 +242,7 @@ final class MeterViewModel: ObservableObject {
         settings = loaded
         refreshIntervalText = String(Int(loaded.refreshIntervalSeconds))
         compactMode = loaded.compactMode
+        liveAccountTelemetry = loaded.liveAccountTelemetry
         summary = UsageSummary(
             isEstimated: true,
             codexPath: loaded.codexPath,
@@ -277,11 +279,26 @@ final class MeterViewModel: ObservableObject {
         let result = await Task.detached {
             await CodexReader().readEvents(codexPath: currentSettings.codexPath)
         }.value
-        summary = UsageCalculator().calculate(
+        var refreshedSummary = UsageCalculator().calculate(
             events: result.events,
             codexPath: currentSettings.codexPath,
             parseErrors: result.parseErrors
         )
+        refreshedSummary.liveTelemetryEnabled = currentSettings.liveAccountTelemetry
+        if currentSettings.liveAccountTelemetry {
+            do {
+                let live = try await LiveTelemetryReader().read()
+                refreshedSummary.primaryUsedPercent = live.primaryUsedPercent
+                refreshedSummary.secondaryUsedPercent = live.secondaryUsedPercent
+                refreshedSummary.primaryResetsAt = live.primaryResetsAt
+                refreshedSummary.secondaryResetsAt = live.secondaryResetsAt
+                refreshedSummary.rateLimitSource = .live
+                refreshedSummary.rateLimitsObservedAt = live.observedAt
+            } catch {
+                refreshedSummary.liveTelemetryError = error.localizedDescription
+            }
+        }
+        summary = refreshedSummary
         isRefreshing = false
         AppLog.write("refresh complete menuBarValueText=\(menuBarValueText) sessions=\(summary.sessionCount) errors=\(summary.parseErrors.count)")
     }
@@ -307,6 +324,7 @@ final class MeterViewModel: ObservableObject {
             settingsStore.saveRefreshIntervalSeconds(seconds)
         }
         settingsStore.saveCompactMode(compactMode)
+        settingsStore.saveLiveAccountTelemetry(liveAccountTelemetry)
         reloadSettings()
         restartTimer()
         Task { await refresh() }
@@ -326,6 +344,7 @@ final class MeterViewModel: ObservableObject {
         settings = settingsStore.load()
         refreshIntervalText = String(Int(settings.refreshIntervalSeconds))
         compactMode = settings.compactMode
+        liveAccountTelemetry = settings.liveAccountTelemetry
     }
 
     private func restartTimer() {
@@ -401,7 +420,9 @@ struct MeterPopoverView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text("Codex Local Meter")
                 .font(.headline)
-            Text("Local estimates only. No session content leaves your Mac.")
+            Text(model.settings.liveAccountTelemetry
+                 ? "Local estimates with optional live account rate limits."
+                 : "Local estimates only. No session content leaves your Mac.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -515,6 +536,13 @@ struct MeterPopoverView: View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
             detailRow("Codex path", model.summary.codexPath)
             detailRow("Token counts", model.summary.isEstimated ? "Not found - using message counts" : "Found")
+            detailRow("Rate limits", rateLimitSourceText)
+            if let rate = UsageFormatting.activityRate(model.summary.activityRate) {
+                detailRow("Activity pace", rate)
+            }
+            if let change = UsageFormatting.activityRateChange(model.summary.activityRate) {
+                detailRow("Pace change", change)
+            }
         }
     }
 
@@ -556,6 +584,11 @@ struct MeterPopoverView: View {
             }
             Toggle("Compact menu bar", isOn: $model.compactMode)
                 .font(.caption)
+            Toggle("Fetch live account rate limits", isOn: $model.liveAccountTelemetry)
+                .font(.caption)
+            Text("Uses the authenticated local Codex App Server; no model turn or session content is sent.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -595,7 +628,7 @@ struct MeterPopoverView: View {
 
     private var heroSupportText: String {
         if model.summary.primaryUsedPercent != nil {
-            return "Based on the latest local Codex rate-limit event."
+            return rateLimitSupportText
         }
         if model.summary.sessionCount == 0 && model.summary.parseErrors.isEmpty {
             return "No recent local session activity found."
@@ -605,9 +638,24 @@ struct MeterPopoverView: View {
 
     private var weeklySupportText: String {
         if model.summary.secondaryUsedPercent != nil {
-            return "Based on the latest local Codex rate-limit event."
+            return rateLimitSupportText
         }
         return model.summary.isEstimated ? "Using local message counts until rate-limit data appears." : "Using local token counts."
+    }
+
+    private var rateLimitSupportText: String {
+        model.summary.rateLimitSource == .live
+            ? "Current account rate limit from Codex App Server."
+            : "Based on the latest local Codex rate-limit event."
+    }
+
+    private var rateLimitSourceText: String {
+        if let error = model.summary.liveTelemetryError { return "Live unavailable: \(error)" }
+        switch model.summary.rateLimitSource {
+        case .live: return "Live account telemetry"
+        case .local: return "Local session files"
+        case nil: return model.summary.liveTelemetryEnabled ? "Live telemetry pending" : "Not available"
+        }
     }
 
     private var estimatedFiveHourValue: String {

@@ -80,8 +80,12 @@ private final class TelemetryOperation: @unchecked Sendable {
         let process = Process()
         let input = Pipe()
         let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["codex", "app-server"]
+        guard let executable = Self.codexExecutable() else {
+            finish(.failure(LiveTelemetryError.couldNotStart))
+            return
+        }
+        process.executableURL = executable
+        process.arguments = ["app-server"]
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
@@ -109,6 +113,22 @@ private final class TelemetryOperation: @unchecked Sendable {
         DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds) { [weak self] in
             self?.finish(.failure(LiveTelemetryError.timedOut))
         }
+    }
+
+    private static func codexExecutable() -> URL? {
+        var candidates: [String] = []
+        if let path = ProcessInfo.processInfo.environment["PATH"] {
+            candidates.append(contentsOf: path.split(separator: ":").map { "\($0)/codex" })
+        }
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        candidates.append(contentsOf: [
+            "\(home)/.local/bin/codex",
+            "/opt/homebrew/bin/codex",
+            "/usr/local/bin/codex",
+            "/Applications/Codex.app/Contents/Resources/codex"
+        ])
+        return candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0) })
+            .map(URL.init(fileURLWithPath:))
     }
 
     private func receive(_ data: Data, input: Pipe) {

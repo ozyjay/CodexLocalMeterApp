@@ -189,6 +189,36 @@ enum CoreTestRunner {
             )
         }
 
+        await test("live telemetry parses account rate limits", failures: &failures) {
+            let observedAt = Date(timeIntervalSince1970: 1_700_000_000)
+            let result = LiveTelemetryReader.parseAccountRateLimitsResult([
+                "rateLimitsByLimitId": [
+                    "codex": [
+                        "primary": ["usedPercent": 42.5, "windowDurationMins": 300, "resetsAt": 1_700_003_600],
+                        "secondary": ["usedPercent": 81.0, "windowDurationMins": 10_080, "resetsAt": 1_700_086_400]
+                    ]
+                ]
+            ], observedAt: observedAt)
+            expect(result?.primaryUsedPercent == 42.5, "expected primary live percentage")
+            expect(result?.secondaryUsedPercent == 81, "expected secondary live percentage")
+            expect(result?.primaryResetsAt == Date(timeIntervalSince1970: 1_700_003_600), "expected primary reset")
+            expect(result?.observedAt == observedAt, "expected observation timestamp")
+        }
+
+        await test("usage calculator reports recent activity pace", failures: &failures) {
+            let now = Date(timeIntervalSince1970: 2_000_000)
+            let events = [
+                RawEvent(sessionId: "current", timestamp: now.addingTimeInterval(-60), inputTokens: 150, outputTokens: 150),
+                RawEvent(sessionId: "previous", timestamp: now.addingTimeInterval(-20 * 60), inputTokens: 75, outputTokens: 75)
+            ]
+            let summary = UsageCalculator(now: { now }).calculate(events: events, codexPath: "/tmp/codex", parseErrors: [])
+            expect(summary.activityRate?.unit == .tokens, "expected token activity rate")
+            expect(summary.activityRate?.currentPerMinute == 20, "expected current token rate")
+            expect(summary.activityRate?.previousPerMinute == 10, "expected previous token rate")
+            expect(UsageFormatting.activityRate(summary.activityRate) == "20 tokens/min", "expected formatted activity rate")
+            expect(UsageFormatting.activityRateChange(summary.activityRate) == "+100% vs previous 15 min", "expected formatted activity change")
+        }
+
         await test("status formatter chooses normal warning and danger levels from primary percent", failures: &failures) {
             let settings = MeterSettings(
                 codexPath: "/tmp/codex",

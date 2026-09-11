@@ -65,6 +65,14 @@ public enum DiagnosticsReporter {
         }
         lines.append("  Last activity   : \(UsageFormatting.relativeTime(summary.lastActivity, now: now))")
         lines.append("  Models detected : \(summary.modelNames.isEmpty ? "(none)" : summary.modelNames.joined(separator: ", "))")
+        lines.append("  Rate-limit source: \(summary.rateLimitSource?.rawValue ?? "none")")
+        lines.append("  Live telemetry  : \(summary.liveTelemetryEnabled ? "enabled" : "disabled")")
+        if let error = summary.liveTelemetryError {
+            lines.append("  Live error      : \(error)")
+        }
+        if let rate = UsageFormatting.activityRate(summary.activityRate) {
+            lines.append("  Activity pace   : \(rate)")
+        }
         lines.append("")
         lines.append("PARSE ISSUES (\(summary.parseErrors.count))")
         if summary.parseErrors.isEmpty {
@@ -74,8 +82,8 @@ public enum DiagnosticsReporter {
         }
         lines.append("")
         lines.append("PRIVACY")
-        lines.append("  Network calls  : none")
-        lines.append("  Telemetry      : none")
+        lines.append("  Network calls  : \(summary.liveTelemetryEnabled ? "Codex account rate-limit metadata" : "none")")
+        lines.append("  Telemetry      : \(summary.liveTelemetryEnabled ? "optional live rate limits enabled" : "none")")
         lines.append("  File writes    : none (read-only)")
         lines.append("  Content shown  : paths, counts, timestamps only")
         lines.append("")

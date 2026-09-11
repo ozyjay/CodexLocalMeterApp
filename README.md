@@ -1,13 +1,15 @@
 # Codex Local Meter App
 
-Native macOS menu bar version of the Codex Local Meter VS Code extension. It reads local Codex session files under `~/.codex`, derives usage metadata, and keeps data on your Mac.
+Native macOS menu bar version of the Codex Local Meter VS Code extension. It reads local Codex session files under `~/.codex`, derives usage metadata, and can optionally fetch current account rate limits through the local Codex App Server.
 
 ## Privacy
 
-- No network calls.
+- No network calls by default.
 - No telemetry or analytics.
 - No writes to Codex session files.
 - No prompt, response, code, or tool-output content shown.
+
+Live account telemetry is off by default. When enabled in Details, the app asks the authenticated local `codex app-server` for account rate-limit metadata during refresh. This does not start a model turn or send session content, but the Codex App Server may make an authenticated service request.
 
 ## Development
 
