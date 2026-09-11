@@ -204,9 +204,9 @@ private extension RateLimitWindow {
     var tooltipSuffix: String {
         switch self {
         case .primary:
-            return "5-hour window"
+            return "Primary limit"
         case .secondary:
-            return "7-day window"
+            return "Secondary limit"
         }
     }
 }
@@ -401,9 +401,15 @@ struct MeterPopoverView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 header
-                heroSection
-                if model.settings.showWeeklyUsage {
-                    weeklySection
+                if model.summary.primaryUsedPercent != nil {
+                    primarySection
+                }
+                if model.settings.showWeeklyUsage, model.summary.secondaryUsedPercent != nil {
+                    secondarySection
+                }
+                if model.summary.primaryUsedPercent == nil
+                    && (!model.settings.showWeeklyUsage || model.summary.secondaryUsedPercent == nil) {
+                    rateLimitsUnavailableSection
                 }
                 statusLine
                 actions
@@ -428,18 +434,18 @@ struct MeterPopoverView: View {
         }
     }
 
-    private var heroSection: some View {
+    private var primarySection: some View {
         TimelineView(.periodic(from: Date(), by: 60)) { context in
             CircularSplitFaceMeter(
-                title: "5-hour window",
+                title: "Primary",
                 percent: model.summary.primaryUsedPercent,
-                percentDetail: StatusFormatter.fiveHourDetail(summary: model.summary),
+                percentDetail: StatusFormatter.primaryDetail(summary: model.summary),
                 remainingText: primaryWindowRemainingText(now: context.date),
                 supportText: heroSupportText,
-                fallbackTitle: model.summary.isEstimated ? "Est." : "Local",
-                fallbackValue: estimatedFiveHourValue,
+                fallbackTitle: "Primary",
+                fallbackValue: "Unavailable",
                 palette: .primary(statusLevel: primaryStatusLevel),
-                accessibilityLabel: "5-hour rate limit"
+                accessibilityLabel: "Primary rate limit"
             )
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -447,20 +453,36 @@ struct MeterPopoverView: View {
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    private var weeklySection: some View {
+    private var secondarySection: some View {
         TimelineView(.periodic(from: Date(), by: 60)) { context in
             CircularSplitFaceMeter(
-                title: "7-day window",
+                title: "Secondary",
                 percent: model.summary.secondaryUsedPercent,
-                percentDetail: StatusFormatter.sevenDayDetail(summary: model.summary),
+                percentDetail: StatusFormatter.secondaryDetail(summary: model.summary),
                 remainingText: secondaryWindowRemainingText(now: context.date),
                 supportText: weeklySupportText,
-                fallbackTitle: model.summary.isEstimated ? "Est." : "Local",
-                fallbackValue: estimatedWeeklyValue,
+                fallbackTitle: "Secondary",
+                fallbackValue: "Unavailable",
                 palette: .secondary(statusLevel: secondaryStatusLevel),
-                accessibilityLabel: "7-day rate limit"
+                accessibilityLabel: "Secondary rate limit"
             )
         }
+    }
+
+    private var rateLimitsUnavailableSection: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "gauge.with.dots.needle.0percent")
+                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Rate limits unavailable")
+                    .font(.subheadline.weight(.medium))
+                Text("Codex has not reported a Primary or Secondary limit. Local activity estimates remain available in Details.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var statusLine: some View {
@@ -526,9 +548,8 @@ struct MeterPopoverView: View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
             detailRow("Sessions (7 d)", "\(model.summary.sessionCount)")
             detailRow("Models", model.summary.modelNames.isEmpty ? "-" : model.summary.modelNames.joined(separator: ", "))
-            if !model.settings.showWeeklyUsage {
-                detailRow("7-day window", StatusFormatter.sevenDayDetail(summary: model.summary))
-            }
+            detailRow("5-hour local activity", StatusFormatter.fiveHourActivityDetail(summary: model.summary))
+            detailRow("7-day local activity", StatusFormatter.sevenDayActivityDetail(summary: model.summary))
         }
     }
 
@@ -658,20 +679,6 @@ struct MeterPopoverView: View {
         }
     }
 
-    private var estimatedFiveHourValue: String {
-        if model.summary.isEstimated {
-            return "~\(model.summary.fiveHourMessages ?? 0) msgs"
-        }
-        return UsageFormatting.tokens(model.summary.fiveHourTokens) ?? "0 tokens"
-    }
-
-    private var estimatedWeeklyValue: String {
-        if model.summary.isEstimated {
-            return "~\(model.summary.sevenDayMessages ?? 0) msgs"
-        }
-        return UsageFormatting.tokens(model.summary.sevenDayTokens) ?? "0 tokens"
-    }
-
     private var primaryStatusLevel: StatusLevel {
         level(for: model.summary.primaryUsedPercent)
     }
@@ -701,22 +708,14 @@ struct MeterPopoverView: View {
         if let resetsAt = model.summary.primaryResetsAt {
             return UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now)
         }
-        return UsageFormatting.windowRemaining(
-            lastActivity: model.summary.lastActivity,
-            duration: 5 * 60 * 60,
-            now: now
-        )
+        return "Reset time unavailable"
     }
 
     private func secondaryWindowRemainingText(now: Date) -> String {
         if let resetsAt = model.summary.secondaryResetsAt {
             return UsageFormatting.resetRemaining(resetsAt: resetsAt, now: now)
         }
-        return UsageFormatting.windowRemaining(
-            lastActivity: model.summary.lastActivity,
-            duration: 7 * 24 * 60 * 60,
-            now: now
-        )
+        return "Reset time unavailable"
     }
 
     private func detailRow(_ label: String, _ value: String) -> some View {

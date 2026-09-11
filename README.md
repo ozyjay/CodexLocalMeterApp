@@ -2,6 +2,8 @@
 
 Native macOS menu bar version of the Codex Local Meter VS Code extension. It reads local Codex session files under `~/.codex`, derives usage metadata, and can optionally fetch current account rate limits through the local Codex App Server.
 
+Reported account limits retain Codex's `Primary` and `Secondary` names; the app does not assume that Primary means five hours or Secondary means seven days. Current configurations may report only a Primary weekly limit. Fixed 5-hour and 7-day token/message totals are shown separately as local activity estimates.
+
 ## Privacy
 
 - No network calls by default.

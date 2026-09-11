@@ -13,16 +13,17 @@ public enum RateLimitWindow: Sendable, Equatable {
     public var menuSuffix: String {
         switch self {
         case .primary:
-            return "5h"
+            return "Primary"
         case .secondary:
-            return "7d"
+            return "Secondary"
         }
     }
 }
 
 public enum StatusFormatter {
     public static func statusText(summary: UsageSummary, settings: MeterSettings) -> String {
-        if summary.sessionCount == 0 && summary.parseErrors.isEmpty {
+        if summary.sessionCount == 0 && summary.parseErrors.isEmpty
+            && summary.primaryUsedPercent == nil && summary.secondaryUsedPercent == nil {
             return "--"
         }
 
@@ -77,20 +78,28 @@ public enum StatusFormatter {
         }
     }
 
-    public static func fiveHourDetail(summary: UsageSummary) -> String {
+    public static func primaryDetail(summary: UsageSummary) -> String {
         if let percent = summary.primaryUsedPercent {
-            return "\(UsageFormatting.percent(percent))% of 5-hour rate limit"
+            return "\(UsageFormatting.percent(percent))% used"
         }
+        return "Unavailable"
+    }
+
+    public static func secondaryDetail(summary: UsageSummary) -> String {
+        if let percent = summary.secondaryUsedPercent {
+            return "\(UsageFormatting.percent(percent))% used"
+        }
+        return "Unavailable"
+    }
+
+    public static func fiveHourActivityDetail(summary: UsageSummary) -> String {
         if summary.isEstimated {
             return "~\(summary.fiveHourMessages ?? 0) messages"
         }
         return "\(UsageFormatting.tokens(summary.fiveHourTokens) ?? "0") tokens"
     }
 
-    public static func sevenDayDetail(summary: UsageSummary) -> String {
-        if let percent = summary.secondaryUsedPercent {
-            return "\(UsageFormatting.percent(percent))% of 7-day rate limit"
-        }
+    public static func sevenDayActivityDetail(summary: UsageSummary) -> String {
         if summary.isEstimated {
             return "~\(summary.sevenDayMessages ?? 0) messages"
         }
