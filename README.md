@@ -65,6 +65,8 @@ After packaging, install the app into `~/Applications`:
 ./scripts/install-app.sh
 ```
 
+The installer always rebuilds and packages the current source before replacing the installed app, so an older `dist` bundle cannot be installed accidentally.
+
 Then launch the installed app:
 
 ```bash

@@ -8,9 +8,9 @@ DEST_APP="$HOME/Applications/$APP_NAME.app"
 DEST_DIR="$(dirname "$DEST_APP")"
 LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
-if [[ ! -d "$DIST_APP" ]]; then
-  "$ROOT_DIR/scripts/package-app.sh"
-fi
+# Always package the current source; an existing dist bundle may be stale.
+# Finish the build before stopping the installed app.
+"$ROOT_DIR/scripts/package-app.sh"
 
 pkill -x "Codex Local Meter" 2>/dev/null || true
 pkill -x "CodexLocalMeter" 2>/dev/null || true
